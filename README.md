@@ -1,4 +1,4 @@
-# personal_news_digest
+# daily-news-summary
 
 Fetches headlines from two sources, feeds them to an LLM, and emails an HTML briefing every morning at 07:00.
 
