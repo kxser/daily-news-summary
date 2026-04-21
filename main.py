@@ -14,13 +14,13 @@ NYT_LINKS = [
 ]
 
 
-NYT_PROMPT = f"""
+NYT_PROMPT = """
 <role>
 You are a broadcast news anchor delivering a personalized daily briefing. Your register is that of a senior Reuters or BBC World Service presenter: direct, factual, unadorned. You do not blog. You do not editorialize.
 </role>
 
 <reader>
-THE CURRENT DATE AND TIME IS {time.strftime('%Y-%m-%d %H:%M:%S')}. You are preparing a briefing for a single reader with the following profile:
+THE CURRENT DATE AND TIME IS {{TODAY_DATETIME}}. You are preparing a briefing for a single reader with the following profile:
 
 An 18-year-old dual US-Turkish citizen living in Turkey. Weight story selection toward:
 - AI & ML (labs, models, benchmarks, infra, policy)
@@ -147,39 +147,55 @@ def get_all_articles():
 
             lines.append(f"{title}\n{description}")
 
+    newsapi_response = requests.get(f"https://newsapi.org/v2/top-headlines?country=us&apiKey={os.getenv('NEWSAPI_KEY')}")
+    newsapi_response.raise_for_status()
+    newsapi_headlines = newsapi_response.json()
+
+    for article in newsapi_headlines.get("articles", []):
+        title = (article.get("title") or "").strip()
+        description = (article.get("description") or "").strip()
+        if not title and not description:
+            continue
+        lines.append(f"{title}\n{description}")
+
     text = "\n\n".join(lines)
-    
-    newsapi_headlines = requests.get(f"https://newsapi.org/v2/top-headlines?country=us&apiKey={os.getenv('NEWSAPI_KEY')}").json()
-    
-    
-    text += str(newsapi_headlines)
-    
+
     return text
         
 def main():
+    today_iso = time.strftime('%Y-%m-%d')
+    today_datetime = time.strftime('%Y-%m-%d %H:%M:%S')
+    articles = get_all_articles()
+    prompt = (
+        NYT_PROMPT
+        .replace("{{TODAY_DATETIME}}", today_datetime)
+        .replace("{{TODAY_ISO}}", today_iso)
+        .replace("{{NYT_ARTICLES}}", articles)
+    )
 
     with OpenRouter(
     api_key=os.getenv("OPENROUTER_API_KEY")) as client:
         response = client.chat.send(
             model="google/gemini-3.1-flash-lite-preview",
             messages=[
-                {"role": "user", "content": f"{NYT_PROMPT}\n\n{get_all_articles()}"}
+                {"role": "user", "content": prompt}
             ]
         )
-    
+
     html_content = response.choices[0].message.content
-    
-    requests.post(
+
+    email_response = requests.post(
        "https://api.resend.com/emails",
        headers={"Authorization": f"Bearer {os.getenv('RESEND_API_KEY')}"},
        json={
            "from": "onboarding@resend.dev",
            "to": ["derinaritter@pm.me"],
-           "subject": f"Daily News Briefing - {time.strftime('%Y-%m-%d')}",
+           "subject": f"Daily News Briefing - {today_iso}",
            "html": f"{html_content}",
        },
     )
-    print(f"Successfully generated and sent briefing at {time.strftime('%Y-%m-%d %H:%M:%S')}!")
+    email_response.raise_for_status()
+    print(f"Successfully generated and sent briefing at {today_datetime}!")
 
 def run_job():
     print("Running scheduled briefing job...")
