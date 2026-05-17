@@ -17,4 +17,4 @@ NYT API (×5) ─┐
 NewsAPI ──────┘
 ```
 
-Stateless — nothing is stored between runs.
+Stateless: nothing is stored between runs.
